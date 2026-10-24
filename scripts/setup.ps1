@@ -21,6 +21,11 @@ Write-Host "Installing backend packages..."
 Write-Host "Installing Electron..."
 if (-not (Get-Command npm -ErrorAction SilentlyContinue)) { throw "Node.js / npm was not found. Install Node.js LTS first." }
 npm install --no-audit --no-fund
+# Newer npm versions can skip install scripts; Electron needs its postinstall to fetch the binary.
+if (-not (Test-Path (Join-Path $root 'node_modules\electron\dist\electron.exe'))) {
+    Write-Host "Downloading the Electron binary..."
+    node (Join-Path $root 'node_modules\electron\install.js')
+}
 
 Write-Host ""
 Write-Host "All set! Start the app with:  npm start" -ForegroundColor Green

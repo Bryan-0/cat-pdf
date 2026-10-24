@@ -59,7 +59,17 @@ Every operation shows a small cat animation with a rotating message.
   </tr>
 </table>
 
-## Setup (once)
+## Download (Windows)
+
+Get **`Cat-PDF-Setup-<version>.exe`** from the [latest release](https://github.com/Bryan-0/cat-pdf/releases/latest) and run it. You don't need Python or Node: the installer ships the app and its PDF engine together. It installs for your user only (no admin rights), and adds Desktop and Start-menu shortcuts and an uninstaller in *Apps & features*.
+
+> **"Windows protected your PC"?** The installer isn't code-signed yet, so SmartScreen warns about it. Click **More info → Run anyway**.
+
+When Cat PDF opens, it starts its local PDF service in the background on a free `127.0.0.1` port. If a port is busy it tries another one, and the service stops when you close the app. If something goes wrong, the log is at `%APPDATA%\Cat PDF\logs\backend.log`.
+
+## Run from source
+
+### Setup (once)
 
 You need **Python 3.10+** and **Node.js 18+** on PATH.
 
@@ -69,7 +79,7 @@ powershell -ExecutionPolicy Bypass -File scripts/setup.ps1
 
 This creates `backend/.venv`, installs the Python packages and installs Electron.
 
-## Run
+### Run
 
 ```bash
 npm start
@@ -83,6 +93,14 @@ powershell -ExecutionPolicy Bypass -File scripts/create-shortcut.ps1
 
 Electron starts the Python backend by itself on a random free port, with a random access token, and stops it when you close the window.
 
+### Build the Windows installer
+
+```bash
+npm run dist
+```
+
+This freezes the Python backend into `catpdf-backend.exe` with PyInstaller (`scripts/build-backend.ps1`), then packages it with Electron into `dist/Cat-PDF-Setup-<version>.exe` (electron-builder, NSIS 3.12).
+
 ## DOCX → PDF engines
 
 | Engine | When it is used | Quality |
@@ -91,7 +109,7 @@ Electron starts the Python backend by itself on a random free port, with a rando
 | LibreOffice | if `soffice` is installed | very good |
 | Built-in | always available | good for normal documents: headings, lists, tables, images. Columns, text boxes, headers and footers come out simpler. |
 
-**Auto** picks the best one available. Neither Word nor LibreOffice is installed on this machine, so **Built-in** is used. Installing LibreOffice (free) gives near-perfect results, and Cat PDF detects it automatically.
+**Auto** picks the best one available. Without Word or LibreOffice, **Built-in** is used. Installing LibreOffice (free) gives near-perfect results, and Cat PDF detects it automatically.
 
 ## Project layout
 
@@ -106,7 +124,7 @@ backend/             Python (FastAPI + PyMuPDF)
   catpdf/ops/        merge, edit, convert, markdown, pages: plain functions
   tests/             pytest suite (generates its own fixtures)
 docs/API.md          backend API contract
-scripts/             setup + shortcut scripts
+scripts/             setup, shortcut and backend build scripts
 assets/              app icon (svg/png/ico)
 ```
 
@@ -123,4 +141,4 @@ To run the backend on its own: `npm run backend` starts it on port 8765 without 
 - **Text editing** swaps the original text for a standard font (Helvetica, Times or Courier, chosen to match the original's style) at the same size and colour. A longer replacement grows to the right (stopping at the next text or a table border) before it shrinks. Text in embedded fonts may look slightly different after editing.
 - **Scanned PDFs** (images of text) contain no text to edit or convert to Markdown. There's no OCR yet.
 - **Password-protected** PDFs that need a password to open are refused with a clear message.
-- **Licence:** PyMuPDF is AGPL-3.0, which is fine for personal use. Keep that in mind if you ever distribute the app.
+- **Licence:** Cat PDF is released under the AGPL-3.0, because it bundles PyMuPDF (AGPL-3.0). See [LICENSE](LICENSE).

@@ -3,14 +3,74 @@
   "productName": "Cat PDF",
   "version": "1.0.0",
   "description": "A local, cat-powered PDF manager: merge, edit, sign and convert PDFs without uploading anything.",
+  "author": "Bryan-0",
+  "license": "AGPL-3.0-only",
+  "homepage": "https://github.com/Bryan-0/cat-pdf",
+  "repository": "github:Bryan-0/cat-pdf",
   "main": "app/main.js",
   "private": true,
   "scripts": {
     "start": "electron .",
     "backend": "cd backend && .venv\\Scripts\\python.exe -m catpdf --port 8765 --dev",
-    "test:backend": "cd backend && .venv\\Scripts\\python.exe -m pytest -q"
+    "test:backend": "cd backend && .venv\\Scripts\\python.exe -m pytest -q",
+    "build:backend": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-backend.ps1",
+    "build:installer": "electron-builder --win nsis --x64 --publish never",
+    "dist": "npm run build:backend && npm run build:installer"
+  },
+  "build": {
+    "appId": "com.catpdf.app",
+    "productName": "Cat PDF",
+    "copyright": "Copyright © 2026 Bryan-0",
+    "toolsets": {
+      "nsis": "1.2.1",
+      "winCodeSign": "1.1.0"
+    },
+    "directories": {
+      "output": "dist",
+      "buildResources": "assets"
+    },
+    "files": [
+      "app/**/*",
+      "assets/icon.png",
+      "assets/icon.ico",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "build/backend-dist/catpdf-backend",
+        "to": "backend"
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "assets/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Cat PDF",
+      "uninstallDisplayName": "Cat PDF",
+      "installerIcon": "assets/icon.ico",
+      "uninstallerIcon": "assets/icon.ico",
+      "artifactName": "Cat-PDF-Setup-${version}.exe",
+      "deleteAppDataOnUninstall": false
+    },
+    "extraFiles": [
+      "LICENSE"
+    ]
   },
   "devDependencies": {
-    "electron": "^33.2.0"
+    "electron": "^33.2.0",
+    "electron-builder": "^26.18.0"
   }
 }

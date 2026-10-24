@@ -3,11 +3,14 @@
 The Python backend (`backend/catpdf`, FastAPI + uvicorn) runs **only on 127.0.0.1**. Electron spawns it:
 
 ```
-backend/.venv/Scripts/python.exe -m catpdf --port <PORT>
+backend/.venv/Scripts/python.exe -m catpdf --port <PORT> --exit-with-stdin      (development)
+resources/backend/catpdf-backend.exe --port <PORT> --exit-with-stdin            (installed app, PyInstaller)
 env: CATPDF_TOKEN=<random hex>
 ```
 
-- The process prints `CATPDF_READY <port>` to stdout once it's listening.
+- The process prints `CATPDF_READY <port>` to stdout once it's listening. `--port 0` binds any free port; the line always carries the real one.
+- If the port is taken, the process exits with code **3** (and a `[Errno 10048] error while attempting to bind` line on stderr). Electron then retries on another port, up to 8 times, the last time with `--port 0`. It only uses a backend once an authenticated request succeeds.
+- `--exit-with-stdin`: exit as soon as stdin closes. Electron keeps a pipe open, so if the app dies, even from a crash, the backend shuts down too.
 - `--dev` flag: token check disabled (for manual curl testing / `npm run backend`).
 - Every request must carry the token in the `X-CatPDF-Token` header **or** a `token` query parameter (the query form exists so `<img src>` works). Missing/wrong token → `401`.
 - CORS: allow all origins, methods and headers (the renderer is loaded from `file://`, so its origin is `null`). The token is what protects the API.

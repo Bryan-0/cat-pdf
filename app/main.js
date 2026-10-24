@@ -1,5 +1,6 @@
 // Cat PDF — Electron main process.
-// Spawns the local Python backend on a free 127.0.0.1 port, then opens the window.
+// Opens the window, then starts the local Python backend on a free 127.0.0.1 port
+// (retrying on another port if one turns out to be busy).
 const { app, BrowserWindow, ipcMain, dialog, shell, clipboard, nativeImage } = require('electron');
 const path = require('path');
 const fs = require('fs');
@@ -11,8 +12,14 @@ const ROOT = path.join(__dirname, '..');
 const BACKEND_DIR = path.join(ROOT, 'backend');
 const ICON = path.join(ROOT, 'assets', 'icon.png');
 
+const START_ATTEMPTS = 8;          // ports tried before giving up
+const READY_TIMEOUT_MS = 60000;    // first launch of the bundled backend can be slow (antivirus scan)
+const EXIT_PORT_BUSY = 3;          // backend exit code when it can't bind its port
+
 let mainWindow = null;
 let backendProc = null;
+let starting = null;
+// url/token are only published once the backend answered an authenticated request.
 const backend = { url: null, token: null, ready: false, error: null, log: [] };
 
 function findPython() {
@@ -23,11 +30,22 @@ function findPython() {
   return candidates.find((p) => fs.existsSync(p)) || (process.platform === 'win32' ? 'python' : 'python3');
 }
 
+/** Installed app: the PyInstaller-built exe shipped in resources/. Dev: the venv's Python. */
+function backendCommand(port) {
+  const args = ['--port', String(port), '--exit-with-stdin'];
+  if (app.isPackaged) {
+    const exe = path.join(process.resourcesPath, 'backend', process.platform === 'win32' ? 'catpdf-backend.exe' : 'catpdf-backend');
+    return { cmd: exe, args, cwd: path.dirname(exe) };
+  }
+  return { cmd: findPython(), args: ['-m', 'catpdf', ...args], cwd: BACKEND_DIR };
+}
+
+/** Ask the OS for a currently free 127.0.0.1 port (0 = let the backend pick one itself). */
 function freePort() {
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve) => {
     const srv = net.createServer();
     srv.unref();
-    srv.on('error', reject);
+    srv.on('error', () => resolve(0));
     srv.listen(0, '127.0.0.1', () => {
       const { port } = srv.address();
       srv.close(() => resolve(port));
@@ -35,9 +53,93 @@ function freePort() {
   });
 }
 
+let logFile = null;
 function pushLog(line) {
   backend.log.push(line);
   if (backend.log.length > 200) backend.log.shift();
+  try {
+    if (!logFile) {
+      const dir = path.join(app.getPath('userData'), 'logs');
+      fs.mkdirSync(dir, { recursive: true });
+      logFile = path.join(dir, 'backend.log');
+      if (fs.existsSync(logFile) && fs.statSync(logFile).size > 1024 * 1024) fs.rmSync(logFile);
+    }
+    fs.appendFileSync(logFile, `${new Date().toISOString()} ${line}\n`);
+  } catch { /* logging must never break the app */ }
+}
+
+/** True once the backend answers a token-protected endpoint, i.e. it's ours and reachable. */
+async function handshake(url, token) {
+  for (let i = 0; i < 10; i++) {
+    try {
+      const res = await fetch(`${url}/convert/docx/engines`, { headers: { 'X-CatPDF-Token': token } });
+      if (res.ok) return true;
+    } catch { /* not reachable yet */ }
+    await new Promise((r) => setTimeout(r, 200));
+  }
+  return false;
+}
+
+/**
+ * Start one backend process on `port`. Resolves with {proc, port} once it printed
+ * CATPDF_READY and passed the handshake; rejects with {busy, message} otherwise.
+ */
+function launchOnce(port, token) {
+  return new Promise((resolve, reject) => {
+    const { cmd, args, cwd } = backendCommand(port);
+    pushLog(`starting backend on port ${port || 'auto'}: ${cmd}`);
+    let proc;
+    try {
+      proc = spawn(cmd, args, {
+        cwd,
+        env: { ...process.env, CATPDF_TOKEN: token, PYTHONUNBUFFERED: '1', PYTHONIOENCODING: 'utf-8' },
+        stdio: ['pipe', 'pipe', 'pipe'],  // stdin stays open: the backend exits when we disappear
+        windowsHide: true,
+      });
+    } catch (err) {
+      reject({ busy: false, message: `Could not start the backend (${cmd}): ${err.message}` });
+      return;
+    }
+    let settled = false;
+    let buffer = '';
+    let bindError = false;
+    const fail = (busy, message) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      try { proc.kill(); } catch { /* gone */ }
+      reject({ busy, message });
+    };
+    const timer = setTimeout(() => fail(false, 'The backend took too long to start.'), READY_TIMEOUT_MS);
+
+    proc.stdout.on('data', (buf) => {
+      buffer += buf.toString();
+      const lines = buffer.split(/\r?\n/);
+      buffer = lines.pop();
+      for (const line of lines.filter(Boolean)) {
+        pushLog(line);
+        const m = /^CATPDF_READY (\d+)/.exec(line);
+        if (m && !settled) {
+          const realPort = Number(m[1]);  // the backend's word wins (matters for port 0)
+          handshake(`http://127.0.0.1:${realPort}`, token).then((ok) => {
+            if (!ok) return fail(true, `Port ${realPort} answered, but not as Cat PDF.`);
+            if (settled) return;
+            settled = true;
+            clearTimeout(timer);
+            resolve({ proc, port: realPort });
+          });
+        }
+      }
+    });
+    proc.stderr.on('data', (buf) => buf.toString().split(/\r?\n/).filter(Boolean).forEach((line) => {
+      pushLog(line);
+      if (/10048|10013|address already in use|attempting to bind/i.test(line)) bindError = true;
+    }));
+    proc.on('error', (err) => fail(false, `Could not start the backend (${cmd}): ${err.message}.${app.isPackaged ? '' : ' Did you run scripts\\setup.ps1?'}`));
+    proc.on('exit', (code) => {
+      fail(code === EXIT_PORT_BUSY || bindError, `The backend stopped while starting (exit code ${code}).`);
+    });
+  });
 }
 
 async function startBackend() {
@@ -48,44 +150,51 @@ async function startBackend() {
     backend.ready = true;
     return;
   }
-  const port = await freePort();
-  backend.token = crypto.randomBytes(24).toString('hex');
-  backend.url = `http://127.0.0.1:${port}`;
-  const python = findPython();
-  const proc = spawn(python, ['-m', 'catpdf', '--port', String(port)], {
-    cwd: BACKEND_DIR,
-    env: { ...process.env, CATPDF_TOKEN: backend.token, PYTHONUNBUFFERED: '1', PYTHONIOENCODING: 'utf-8' },
-    windowsHide: true,
-  });
-  backendProc = proc;
-  proc.stdout.on('data', (buf) => {
-    const text = buf.toString();
-    text.split(/\r?\n/).filter(Boolean).forEach(pushLog);
-    if (text.includes('CATPDF_READY')) {
-      backend.ready = true;
+  const token = crypto.randomBytes(24).toString('hex');
+  let lastError = 'unknown error';
+  for (let attempt = 1; attempt <= START_ATTEMPTS; attempt++) {
+    // Normally a port the OS just reported free; if something grabs it first we try another.
+    // The last attempt lets the backend bind any free port itself and report it.
+    // CATPDF_TEST_PORTS ("5000,5001,...") forces the ports tried, to test the busy-port path.
+    const port = process.env.CATPDF_TEST_PORTS
+      ? Number(process.env.CATPDF_TEST_PORTS.split(',')[attempt - 1] || 0)
+      : attempt === START_ATTEMPTS ? 0 : await freePort();
+    try {
+      const { proc, port: realPort } = await launchOnce(port, token);
+      backendProc = proc;
+      Object.assign(backend, { url: `http://127.0.0.1:${realPort}`, token, ready: true, error: null });
+      pushLog(`backend ready on port ${realPort} (attempt ${attempt})`);
+      proc.on('exit', (code) => {
+        // Ignore the exit of a process we replaced via backend:restart.
+        if (app.isQuitting || proc !== backendProc) return;
+        backend.ready = false;
+        backend.error = `The backend stopped (exit code ${code}).\n${backend.log.slice(-8).join('\n')}`;
+        mainWindow?.webContents.send('backend:error', backend.error);
+      });
       mainWindow?.webContents.send('backend:ready');
+      return;
+    } catch (err) {
+      lastError = err.message;
+      pushLog(`attempt ${attempt} failed: ${err.message}`);
+      if (!err.busy) break;  // only a busy port is worth retrying
     }
-  });
-  proc.stderr.on('data', (buf) => buf.toString().split(/\r?\n/).filter(Boolean).forEach(pushLog));
-  proc.on('error', (err) => {
-    backend.error = `Could not start the Python backend (${python}): ${err.message}. Did you run scripts\\setup.ps1?`;
-    mainWindow?.webContents.send('backend:error', backend.error);
-  });
-  proc.on('exit', (code) => {
-    // Ignore the exit of a process we replaced via backend:restart.
-    if (!app.isQuitting && proc === backendProc) {
-      backend.ready = false;
-      backend.error = `The backend stopped (exit code ${code}).\n${backend.log.slice(-8).join('\n')}`;
-      mainWindow?.webContents.send('backend:error', backend.error);
-    }
-  });
+  }
+  backend.error = `${lastError}\n${backend.log.slice(-8).join('\n')}`;
+  mainWindow?.webContents.send('backend:error', backend.error);
+}
+
+function ensureBackend() {
+  if (!starting) starting = startBackend().finally(() => { starting = null; });
+  return starting;
 }
 
 function stopBackend() {
-  if (backendProc && !backendProc.killed) {
+  const proc = backendProc;
+  if (proc && proc.exitCode === null) {
     try {
-      if (process.platform === 'win32') spawn('taskkill', ['/pid', String(backendProc.pid), '/f', '/t'], { windowsHide: true });
-      else backendProc.kill();
+      proc.stdin.end();  // the backend exits on its own when stdin closes
+      if (process.platform === 'win32') spawn('taskkill', ['/pid', String(proc.pid), '/f', '/t'], { windowsHide: true });
+      else proc.kill();
     } catch { /* already gone */ }
   }
 }
@@ -128,10 +237,12 @@ ipcMain.handle('backend:get', () => ({ url: backend.url, token: backend.token, r
 ipcMain.handle('backend:log', () => backend.log.join('\n'));
 ipcMain.handle('backend:restart', async () => {
   if (backend.ready) return true;
-  stopBackend();
-  Object.assign(backend, { url: null, token: null, ready: false, error: null, log: [] });
-  await startBackend().catch((err) => { backend.error = err.message; });
-  return !backend.error;
+  if (!starting) {
+    stopBackend();
+    Object.assign(backend, { url: null, token: null, ready: false, error: null, log: [] });
+  }
+  await ensureBackend();
+  return backend.ready;
 });
 
 ipcMain.handle('dialog:open', async (_e, { kind = 'pdf', multiple = false, title } = {}) => {
@@ -157,12 +268,22 @@ ipcMain.handle('shell:show', (_e, p) => shell.showItemInFolder(p));
 ipcMain.handle('clipboard:write', (_e, text) => clipboard.writeText(String(text ?? '')));
 
 // ---------- lifecycle ----------
-app.whenReady().then(async () => {
-  app.setAppUserModelId('com.catpdf.app');
-  await startBackend().catch((err) => { backend.error = err.message; });
-  createWindow();
-  app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
-});
+// One Cat PDF at a time: a second launch just focuses the existing window.
+if (!app.requestSingleInstanceLock()) {
+  app.quit();
+} else {
+  app.on('second-instance', () => {
+    if (!mainWindow) return;
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.focus();
+  });
+  app.whenReady().then(() => {
+    app.setAppUserModelId('com.catpdf.app');
+    createWindow();  // shows the "waking up the cat" splash while the backend starts
+    ensureBackend();
+    app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
+  });
+}
 
 app.on('before-quit', () => { app.isQuitting = true; stopBackend(); });
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
