@@ -1,0 +1,13 @@
+node_modules/
+backend/.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+dist/
+*.log
+.env
+.env.*
+.claude/
+.vscode/
+.idea/
+*.local.json

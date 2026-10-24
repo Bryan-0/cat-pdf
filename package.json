@@ -1,0 +1,16 @@
+{
+  "name": "cat-pdf",
+  "productName": "Cat PDF",
+  "version": "1.0.0",
+  "description": "A local, cat-powered PDF manager: merge, edit, sign and convert PDFs without uploading anything.",
+  "main": "app/main.js",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "backend": "cd backend && .venv\\Scripts\\python.exe -m catpdf --port 8765 --dev",
+    "test:backend": "cd backend && .venv\\Scripts\\python.exe -m pytest -q"
+  },
+  "devDependencies": {
+    "electron": "^33.2.0"
+  }
+}

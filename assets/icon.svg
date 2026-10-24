@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- rounded tile -->
+  <rect x="16" y="16" width="480" height="480" rx="112" fill="#FFF3E4"/>
+  <!-- document behind the cat -->
+  <g transform="rotate(-8 256 280)">
+    <rect x="150" y="96" width="212" height="270" rx="22" fill="#FFFFFF" stroke="#E7CBB0" stroke-width="8"/>
+    <rect x="182" y="140" width="148" height="14" rx="7" fill="#F7D3AE"/>
+    <rect x="182" y="170" width="120" height="14" rx="7" fill="#F7D3AE"/>
+  </g>
+  <!-- ears -->
+  <path d="M120 250 L150 120 L232 196 Z" fill="#E8761A"/>
+  <path d="M392 250 L362 120 L280 196 Z" fill="#E8761A"/>
+  <path d="M146 220 L160 160 L204 200 Z" fill="#FFC9A3"/>
+  <path d="M366 220 L352 160 L308 200 Z" fill="#FFC9A3"/>
+  <!-- head -->
+  <ellipse cx="256" cy="310" rx="160" ry="138" fill="#F28C28"/>
+  <!-- tabby stripes -->
+  <path d="M256 176 L244 222 L268 222 Z" fill="#C85A0C"/>
+  <path d="M214 184 L214 226 L232 222 Z" fill="#C85A0C"/>
+  <path d="M298 184 L298 226 L280 222 Z" fill="#C85A0C"/>
+  <path d="M100 300 L150 294 L148 312 Z" fill="#C85A0C"/>
+  <path d="M412 300 L362 294 L364 312 Z" fill="#C85A0C"/>
+  <!-- muzzle -->
+  <ellipse cx="256" cy="362" rx="80" ry="58" fill="#FFF3E4"/>
+  <!-- eyes -->
+  <ellipse cx="192" cy="296" rx="22" ry="28" fill="#3B2A1E"/>
+  <ellipse cx="320" cy="296" rx="22" ry="28" fill="#3B2A1E"/>
+  <circle cx="200" cy="286" r="8" fill="#FFFFFF"/>
+  <circle cx="328" cy="286" r="8" fill="#FFFFFF"/>
+  <!-- nose + mouth -->
+  <path d="M240 336 L272 336 L256 354 Z" fill="#E86A7A"/>
+  <path d="M256 354 Q256 374 234 376 M256 354 Q256 374 278 376" fill="none" stroke="#3B2A1E" stroke-width="7" stroke-linecap="round"/>
+  <!-- whiskers -->
+  <g stroke="#3B2A1E" stroke-width="5" stroke-linecap="round">
+    <line x1="168" y1="352" x2="96" y2="340"/>
+    <line x1="168" y1="368" x2="98" y2="376"/>
+    <line x1="344" y1="352" x2="416" y2="340"/>
+    <line x1="344" y1="368" x2="414" y2="376"/>
+  </g>
+</svg>
