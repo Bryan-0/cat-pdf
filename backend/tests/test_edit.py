@@ -305,3 +305,52 @@ def test_rotated_page_image_and_whiteout_upright(client, tmp_path, rotation):
     new = find_span(client, out, 0, "Hello there")
     x0, y0, x1, y1 = new["bbox"]
     assert abs(x0 - 100) < 3 and 518 <= y0 <= 530 and (x1 - x0) > (y1 - y0)
+
+
+# ----------------------------------------------------------------- room to grow
+
+@pytest.fixture
+def table_pdf(tmp_path):
+    """A two-column table row: 'Age' | '2 years', with cell borders, plus a line of two spans."""
+    path = str(tmp_path / "table.pdf")
+    doc = pymupdf.open()
+    page = doc.new_page()
+    page.draw_rect(pymupdf.Rect(72, 100, 150, 120), color=(0, 0, 0), width=0.5)
+    page.draw_rect(pymupdf.Rect(150, 100, 360, 120), color=(0, 0, 0), width=0.5)
+    page.insert_text((76, 114), "Age", fontsize=11)
+    page.insert_text((154, 114), "2 years", fontsize=11)
+    page.insert_text((72, 200), "Left part", fontsize=11)
+    page.insert_text((200, 200), "Right part", fontsize=11)
+    doc.save(path)
+    return path
+
+
+def test_text_spans_report_room_to_grow(client, table_pdf):
+    cell = find_span(client, table_pdf, 0, "2 years")
+    assert 340 <= cell["max_x1"] <= 360  # stops at the cell's right border
+    left = find_span(client, table_pdf, 0, "Left part")
+    right = find_span(client, table_pdf, 0, "Right part")
+    assert left["max_x1"] <= right["bbox"][0]  # stops before the next text on the line
+
+
+def test_replace_text_grows_inside_table_cell(client, tmp_path, table_pdf):
+    cell = find_span(client, table_pdf, 0, "2 years")
+    out = str(tmp_path / "cell.pdf")
+    apply(client, {"path": table_pdf, "output": out, "edits": [{
+        "type": "replace_text", "page": 0, "bbox": cell["bbox"],
+        "text": "2 years (professional napper)", "size": cell["size"], "color": "#000000"}]})
+    new = [s for s in spans(client, out, 0) if "napper" in s["text"]]
+    assert new and all(abs(s["size"] - cell["size"]) < 0.01 for s in new)
+    assert all(s["bbox"][2] <= 360 for s in new)
+
+
+def test_replace_text_does_not_overrun_next_span(client, tmp_path, table_pdf):
+    left = find_span(client, table_pdf, 0, "Left part")
+    out = str(tmp_path / "line.pdf")
+    apply(client, {"path": table_pdf, "output": out, "edits": [{
+        "type": "replace_text", "page": 0, "bbox": left["bbox"],
+        "text": "A much longer left part of the line", "size": left["size"], "color": "#000000"}]})
+    after = spans(client, out, 0)
+    right = next(s for s in after if s["text"] == "Right part")
+    new = [s for s in after if "longer" in s["text"]]
+    assert new and all(s["bbox"][2] <= right["bbox"][0] + 0.5 for s in new)

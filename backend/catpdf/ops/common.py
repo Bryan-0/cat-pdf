@@ -194,3 +194,46 @@ def hex_to_rgb(color: str | None, default=(0.0, 0.0, 0.0)) -> tuple[float, float
 
 def int_to_hex(color: int) -> str:
     return f"#{(int(color) >> 16) & 255:02x}{(int(color) >> 8) & 255:02x}{int(color) & 255:02x}"
+
+
+# --------------------------------------------------------------------------- replaced-text room
+
+def growth_obstacles(page: pymupdf.Page) -> list[tuple[float, float, float, float]]:
+    """Display-space boxes that a replaced line must not grow into: text spans and vertical
+    rules (table borders, box edges). Used by both /pdf/text (preview) and /edit/apply."""
+    rot = page.rotation_matrix  # unrotated -> display
+    boxes = []
+
+    def add(r: pymupdf.Rect) -> None:
+        r = r * rot
+        r.normalize()
+        boxes.append((r.x0, r.y0, r.x1, r.y1))
+
+    for block in page.get_text("dict").get("blocks", []):
+        for line in block.get("lines", []):
+            for span in line.get("spans", []):
+                if span.get("text", "").strip():
+                    add(pymupdf.Rect(span["bbox"]))
+    for path in page.get_drawings():
+        for item in path.get("items", []):
+            if item[0] == "l" and abs(item[1].x - item[2].x) < 1.0:
+                add(pymupdf.Rect(item[1], item[2]))
+            elif item[0] == "re":
+                r = pymupdf.Rect(item[1])
+                add(pymupdf.Rect(r.x0, r.y0, r.x0, r.y1))
+                add(pymupdf.Rect(r.x1, r.y0, r.x1, r.y1))
+    return boxes
+
+
+def grow_limit(page_width: float, bbox, obstacles) -> float:
+    """How far right (display x) a replaced line starting in *bbox* may extend before shrinking:
+    up to the mirrored left margin, stopping 2pt before the first obstacle on the same line."""
+    x0, y0, x1, y1 = bbox
+    if x0 >= page_width / 2:
+        return x1
+    right = max(x1, page_width - x0)
+    min_overlap = 0.3 * (y1 - y0)
+    for ox0, oy0, ox1, oy1 in obstacles:
+        if ox0 >= x1 - 1 and min(oy1, y1) - max(oy0, y0) > min_overlap:
+            right = min(right, ox0 - 2)
+    return max(x1, right)

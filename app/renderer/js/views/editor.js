@@ -426,6 +426,7 @@ export function createEditor({ navigate }) {
           Object.assign(t.style, { position: 'absolute', left: '0', top: '0', width: `${H}px`, height: `${W}px`, lineHeight: `${W}px`, transformOrigin: '0 0', transform: `translate(${W}px, 0) rotate(90deg)` });
         } else {
           t.style.lineHeight = `${H}px`;
+          if (it.maxX1 > it.bbox[2]) node.dataset.maxW = String((it.maxX1 - it.bbox[0]) * scale);
         }
       }
       node.appendChild(t);
@@ -436,10 +437,15 @@ export function createEditor({ navigate }) {
     return node;
   }
 
-  /** Shrink replaced text until it fits its box (mirrors the backend's behaviour). */
+  /** Grow replaced text into the free space on its right (max_x1 from /pdf/text), then shrink
+   *  until it fits (mirrors the backend's behaviour). */
   function fitReplaced(node) {
     const t = node.querySelector('.item-txt');
     if (!t) return;
+    const maxW = parseFloat(node.dataset.maxW);
+    if (maxW && t.scrollWidth > t.clientWidth + 1) {
+      node.style.width = `${Math.min(t.scrollWidth + 1, maxW)}px`;
+    }
     let fs = parseFloat(t.style.fontSize);
     const min = 4 * scale;
     let guard = 60;
@@ -797,7 +803,7 @@ export function createEditor({ navigate }) {
       if (value === span.text && sameStyle(span, style)) return;
       addItem({
         id: uid('e'), type: 'replace_text', page: meta.src, bbox: span.bbox.map(round2), text: value,
-        ...style, spanId: span.id, original: span.text,
+        ...style, spanId: span.id, original: span.text, maxX1: span.max_x1,
       });
       return;
     }

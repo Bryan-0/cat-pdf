@@ -14,6 +14,8 @@ from .common import (
     check_input_file,
     check_page_index,
     file_name,
+    grow_limit,
+    growth_obstacles,
     int_to_hex,
     opened_pdf,
 )
@@ -165,6 +167,10 @@ def page_text_spans(path: str, page: int = 0) -> dict:
                         "serif": traits["serif"],
                         "mono": traits["mono"],
                     })
+        # How far each line may grow when edited (the editor preview mirrors /edit/apply).
+        obstacles = growth_obstacles(pg)
+        for s in spans:
+            s["max_x1"] = round(grow_limit(pg.rect.width, s["bbox"], obstacles), 2)
         return {
             "width": round(pg.rect.width, 2),
             "height": round(pg.rect.height, 2),

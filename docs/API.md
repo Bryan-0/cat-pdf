@@ -44,8 +44,9 @@ Returns `image/png` of the page rendered so the PNG is `width` pixels wide (defa
 {"width": 612.0, "height": 792.0,
  "spans": [{"id": "0-3-1-0", "text": "Hello world", "bbox": [72.0, 70.1, 140.2, 84.0],
             "size": 11.0, "font": "Helvetica-Bold", "color": "#1a1a1a",
-            "bold": true, "italic": false, "serif": false, "mono": false}]}
+            "bold": true, "italic": false, "serif": false, "mono": false, "max_x1": 300.0}]}
 ```
+`max_x1` = how far right (display x) the span may grow when its text is replaced (see `replace_text`).
 Spans come from `page.get_text("dict")` (text blocks only), whitespace-only spans dropped, bbox in display space. `id` is `"{page}-{block}-{line}-{span}"`. Used by the editor so the user can click existing text and change it.
 
 ### `POST /merge`
@@ -78,7 +79,7 @@ Applies an editor session to a PDF and saves it as a new file.
 ```
 - `pages` is the **final page order**. `src` = 0-based page index in `path` (or in `file` when given — pages imported from another PDF). `rotate` = extra clockwise rotation (0/90/180/270) added to the page's existing rotation. A `src` may appear more than once (duplicate page). Missing `pages` = keep original order.
 - `edits[].page` refers to the **original** page index in `path` (edits travel with their page when reordered / duplicated). Edit bboxes are in the display space of the original page (before the extra `rotate`). Edits never apply to pages imported via `file`.
-- `replace_text`: remove the original text under `bbox` (redaction with `images=PDF_REDACT_IMAGE_NONE`, no fill, so images/drawings are kept) then write `text` into that area with the closest Base-14 font (`helv`/`tiro`/`cour` + bold/italic variants), same size/color, rotated to match the page. If the new text doesn't fit, shrink the font until it does (min 4pt) rather than dropping it.
+- `replace_text`: remove the original text under `bbox` (redaction with `images=PDF_REDACT_IMAGE_NONE`, no fill, so images/drawings are kept) then write `text` into that area with the closest Base-14 font (`helv`/`tiro`/`cour` + bold/italic variants), same size/color, rotated to match the page. If the new text is longer, the line first grows to the right into free space: up to the mirrored left margin, stopping 2pt before the next text on that line or a vertical rule such as a table border (this is the span's `max_x1`). Only if it still doesn't fit is the font shrunk (min 4pt); text is never dropped.
 - `add_text`: write text in a box (multi-line allowed, `\n` separated), same font rules, no redaction.
 - `image`: insert the PNG/JPEG data URL into `bbox` keeping aspect ratio (signatures, stamps). Transparency must be preserved.
 - `whiteout`: draw a white filled rectangle (no border).

@@ -23,6 +23,8 @@ from .common import (
     check_output_path,
     check_page_index,
     file_name,
+    grow_limit,
+    growth_obstacles,
     hex_to_rgb,
     open_pdf,
     pdf_bytes,
@@ -340,12 +342,16 @@ def _apply_page_edits(page: pymupdf.Page, edits: list[dict], fonts: FontRegistry
             page.apply_redactions(images=pymupdf.PDF_REDACT_IMAGE_NONE,
                                   graphics=pymupdf.PDF_REDACT_LINE_ART_NONE,
                                   text=pymupdf.PDF_REDACT_TEXT_REMOVE)
-    # 2) Draw everything in the order the user made the edits.
+    # 2) Draw everything in the order the user made the edits. Replaced lines may grow to the
+    #    right into free space; the other replaced boxes count as taken.
+    obstacles = []
+    if replaces:
+        obstacles = growth_obstacles(page) + [tuple(e["_rect"]) for e in replaces]
     for e in edits:
         rect = e["_rect"]
         t = e["type"]
         if t == "replace_text" and e.get("_angle", 0) == 0:
-            rect = _room_to_grow(page, rect)
+            rect = pymupdf.Rect(rect.x0, rect.y0, grow_limit(page.rect.width, rect, obstacles), rect.y1)
         if t in ("replace_text", "add_text"):
             write_text_fitting(page, fonts, rect, e.get("text") or "", e.get("size"),
                                e.get("color"), bool(e.get("serif")), bool(e.get("mono")),
@@ -358,27 +364,6 @@ def _apply_page_edits(page: pymupdf.Page, edits: list[dict], fonts: FontRegistry
         elif t == "whiteout":
             page.draw_rect(_to_unrotated(page, rect), color=None, fill=(1, 1, 1),
                            width=0, overlay=True)
-
-
-def _room_to_grow(page: pymupdf.Page, disp: pymupdf.Rect) -> pymupdf.Rect:
-    """Widen a replaced line to the right so longer text keeps its size instead of shrinking.
-
-    It may grow up to the mirrored left margin, but stops before any other text on the same
-    line (e.g. the next table cell). Runs after the redactions, so the old text is gone.
-    """
-    page_w = page.rect.width
-    if disp.x0 >= page_w / 2:
-        return disp
-    right = max(disp.x1, page_w - disp.x0)
-    rot = page.rotation_matrix
-    for block in page.get_text("dict")["blocks"]:
-        for line in block.get("lines", []):
-            lr = pymupdf.Rect(line["bbox"]) * rot
-            lr.normalize()
-            v_overlap = min(lr.y1, disp.y1) - max(lr.y0, disp.y0)
-            if lr.x0 >= disp.x1 - 1 and v_overlap > 0.3 * disp.height:
-                right = min(right, lr.x0 - 2)
-    return pymupdf.Rect(disp.x0, disp.y0, max(disp.x1, right), disp.y1)
 
 
 def _norm_rotate(value) -> int:

@@ -1,9 +1,13 @@
+<p align="center">
+  <img src="assets/icon.png" alt="Cat PDF icon" width="112">
+</p>
+
 # Cat PDF 🐈
 
 A local PDF manager. Merge, edit, sign and convert PDFs on your own computer, with no PDF websites and no uploads.
 An Electron desktop app talks to a small Python service that only listens on `127.0.0.1`.
 
-![icon](assets/icon.png)
+![Cat PDF home screen](docs/screenshots/home.png)
 
 ## What it does
 
@@ -15,6 +19,45 @@ An Electron desktop app talks to a small Python service that only listens on `12
 | **PDF → Markdown** | Clean Markdown for AI agents: YAML front matter, `<!-- page N -->` markers, optional image extraction, and word and token counts. **Copy as AI context** puts it on your clipboard in one click. |
 
 Everything shows a "Purr-fect!" card with **Open** and **Show in folder** when it finishes. While it works, a cat chases yarn or kneads your pages.
+
+## A quick tour
+
+### Edit text and sign, right on the page
+
+Click any line to rewrite it, and the new text keeps the original font size and colour. Then drop in a signature and drag it onto the line.
+
+![Editing a table cell and signing a PDF](docs/screenshots/editor.png)
+
+Signatures can be drawn, typed in a handwriting font, or uploaded, in four ink colours. You can save them on your computer to reuse.
+
+![Signature dialog with a typed signature](docs/screenshots/signature.png)
+
+### Merge anything into one PDF
+
+Mix PDFs, images and Word documents, put them in order, and pick page ranges per file.
+
+![Merging PDFs, an image and a Word document](docs/screenshots/merge.png)
+
+### PDF → Markdown for AI agents
+
+Get clean Markdown with headings, tables and page markers, plus a word and token count so you know it fits your AI chat. **Copy as AI context** puts it on your clipboard in one click.
+
+![PDF converted to Markdown with token count](docs/screenshots/markdown.png)
+
+### A cat keeps you company while you wait
+
+Every operation shows a small cat animation with a rotating message.
+
+![Loading cat](docs/screenshots/loading-cat.png)
+
+### Dark mode
+
+<table>
+  <tr>
+    <td><img src="docs/screenshots/dark-mode.png" alt="Home screen in dark mode"></td>
+    <td><img src="docs/screenshots/convert-dark.png" alt="DOCX to PDF converter in dark mode"></td>
+  </tr>
+</table>
 
 ## Setup (once)
 
@@ -77,7 +120,7 @@ To run the backend on its own: `npm run backend` starts it on port 8765 without 
 
 ## Notes and limits
 
-- **Text editing** swaps the original text for a standard font (Helvetica, Times or Courier, chosen to match the original's style) at the same size and colour. A longer replacement grows to the right before it shrinks. Text in embedded fonts may look slightly different after editing.
+- **Text editing** swaps the original text for a standard font (Helvetica, Times or Courier, chosen to match the original's style) at the same size and colour. A longer replacement grows to the right (stopping at the next text or a table border) before it shrinks. Text in embedded fonts may look slightly different after editing.
 - **Scanned PDFs** (images of text) contain no text to edit or convert to Markdown. There's no OCR yet.
 - **Password-protected** PDFs that need a password to open are refused with a clear message.
 - **Licence:** PyMuPDF is AGPL-3.0, which is fine for personal use. Keep that in mind if you ever distribute the app.
